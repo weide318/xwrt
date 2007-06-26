@@ -3,7 +3,6 @@
 # Webif post-install script.
 #
 
-webif_installed_mark="/tmp/.webif-installed-marker"
 
 #########################################################################################
 # functions
@@ -47,55 +46,47 @@ AddRepository()
 {
 	# $1=reponame
 	# $2=repourl
-	# $3=force last
-	cat "${IPKG_INSTROOT}/etc/ipkg.conf" | grep -q "^src .*$2"
-	[ "$?" != "0" ] && IPKG_UPDATE_NEEDED="1" || {
-		[ "$(grep "^src .*$2" "${IPKG_INSTROOT}/etc/ipkg.conf" | cut -d' ' -f2)" != "$1" ] && {
-			DeleteRepository "$2" 1
-			IPKG_UPDATE_NEEDED="1"
-		} || {
-			DeleteRepository "$2"
-		}
+	cat "${IPKG_INSTROOT}/etc/ipkg.conf" | grep -q "$2"
+	[ "$?" != "0" ] && {
+		echo "src $1 $2" >> "${IPKG_INSTROOT}/etc/ipkg.conf"
+		IPKG_UPDATE_NEEDED="1"
 	}
-	local ltmp=$(mktemp "/tmp/.webif-XXXXXX")
-	cp -p "${IPKG_INSTROOT}/etc/ipkg.conf" "$ltmp" >&- 2>&-
-	echo -n "" > "$ltmp" >&- 2>&-
-	[ "$3" != "1" ] && echo "src $1 $2" > "$ltmp"
-	grep "^src " "${IPKG_INSTROOT}/etc/ipkg.conf" >> "$ltmp"
-	[ "$3" = "1" ] && echo "src $1 $2" >> "$ltmp"
-	grep -v "^src " "${IPKG_INSTROOT}/etc/ipkg.conf" >> "$ltmp"
-	rm -f "${IPKG_INSTROOT}/etc/ipkg.conf" >&- 2>&-
-	mv -f "$ltmp" "${IPKG_INSTROOT}/etc/ipkg.conf"
 }
 
 IPKG_UPDATE_NEEDED="0"
 DeleteRepository()
 {
 	# $1=repourl
-	# $2=force removal of the ipkg list
-	cat "${IPKG_INSTROOT}/etc/ipkg.conf" | grep -q "^src .*$1"
+	cat "${IPKG_INSTROOT}/etc/ipkg.conf" | grep -q "$1"
 	[ "$?" = "0" ] && {
-		[ "$2" = "1" ] && {
-			local list=$(grep "^src .*$1" "${IPKG_INSTROOT}/etc/ipkg.conf" | cut -d' ' -f2)
-			rm -f "${IPKG_INSTROOT}/usr/lib/ipkg/lists/$list" 2>/dev/null
-		}
-		local repo_url_sed=$(echo "$1" | sed s/'\/'/'\\\/'/g)
+		repo_url_sed=$(echo "$1" | sed s/'\/'/'\\\/'/g)
 		cat "${IPKG_INSTROOT}/etc/ipkg.conf" |  sed /$repo_url_sed/d > "${IPKG_INSTROOT}/etc/ipkg.conf"
+		IPKG_UPDATE_NEEDED="1"
 	}
 }
-
-is_package_installed() {
-	# $1 = package name
-	# returns 0 if package is installed.
-	for LOCATION in $(grep "^dest\>" /etc/ipkg.conf | cut -d ' ' -f 3); do
-
-		if [ "$LOCATION" = "/" ]; then
-		        paths="$paths /usr/lib/ipkg/status"
-		else
-		        paths="$paths $LOCATION/usr/lib/ipkg/status"
-		fi
-	done
-	grep -q " $1\$" $paths >> /dev/null 2>&1
+require_reboot() {
+	# Note: Even if the httpd.conf is *NOT* changed the httpd still needs 
+	#  restarting when upgraded from original webif. Newly created pages 
+	#  can't be found by the httpd, not sure why. Yes, its true.
+	# 		
+	# Only sending SIGHUP to httpd does not work. Restarting httpd when
+	# upgrade is done through webif has not been successful, despite a 
+	# a number of techniques one would think would work. 
+	#
+	# Do *NOT* change this just because you think something or the other
+	# should work. We've tried about everything. Only change after you've
+	# thoroughly tested on clean, fresh installs of WR RC5 and RC6, and 
+	# when upgrading the webif through the webif (i.e. use automated install
+	# on X-Wrt home page). If you break this just because you think something
+	# should definitely work, you will die.
+	echo "I'm sorry, but I must reboot your router. This is a ONE time thing and"
+	echo " future upgrades of the webif will NOT require a reboot."
+	echo "Please wait about one minute for your router to reboot ..."
+	reboot_file=$(mktemp /tmp/rebootme.XXXXXX)
+	echo "#!/bin/sh" > $reboot_file
+	echo "sleep 5 && reboot" >> "$reboot_file"
+	chmod +x "$reboot_file"
+	sh "$reboot_file" &	
 }
 
 
@@ -110,32 +101,11 @@ FixReadOnlyLink "${IPKG_INSTROOT}/usr/lib/ipkg/status"
 
 # copy our new httpd.conf and S50dnsmasq files - we renamed them so that the webif can
 # be uninstalled without ipkg removing these pre-existing files as well.
-dnsmasq_filename="S50dnsmasq"
-[ -f "${IPKG_INSTROOT}/etc/init.d/S60dnsmasq" ] && {
+#dnsmasq_filename="S50dnsmasq"
+#[ -f "${IPKG_INSTROOT}/etc/rc.d/S60dnsmasq" ] && {
 	# S50dnsmasq renamed to S60dnsmasq in post-RC6
-	dnsmasq_filename="S60dnsmasq"
-}
-rm -f "${IPKG_INSTROOT}/etc/init.d/S?0dnsmasq"
-rm -f "${IPKG_INSTROOT}/etc/httpd.conf"
-mv -f "${IPKG_INSTROOT}/etc/init.d/x50dnsmasq.webif" "${IPKG_INSTROOT}/etc/init.d/${dnsmasq_filename}"
-rm -f "${IPKG_INSTROOT}/etc/init.d/S60cron"
-mv -f "${IPKG_INSTROOT}/etc/init.d/x60cron.webif" "${IPKG_INSTROOT}/etc/init.d/S60cron"
-mv -f "${IPKG_INSTROOT}/etc/httpd.webif" "${IPKG_INSTROOT}/etc/httpd.conf"
-
-# again, we rename /lib/config/uci-depends.sh so that it doesn't get removed if webif^2 is
-# uninstalled since we've radically changed /etc/functions.sh.
-FixReadOnlyLink "${IPKG_INSTROOT}/lib/config/uci-depends.sh"
-mv -f "${IPKG_INSTROOT}/lib/config/uci-depends.new" "${IPKG_INSTROOT}/lib/config/uci-depends.sh"
-
-# fix up /etc/functions.sh. It must work under RC5, RC6, and 0.9 and must
-# include the UCI callback funcs in /lib/config/uci-depends.sh.
-FixReadOnlyLink "${IPKG_INSTROOT}/etc/functions.sh"
-mv -f "${IPKG_INSTROOT}/etc/functions.new" "${IPKG_INSTROOT}/etc/functions.sh"
-
-# include uci-depends.sh from /etc/functions.sh if not already included.
-#if ! grep -q "uci-depends.sh" "${IPKG_INSTROOT}/etc/functions.sh"; then
-#	echo ". /lib/config/uci-depends.sh" >> "${IPKG_INSTROOT}/etc/functions.sh"
-#fi
+#	dnsmasq_filename="S60dnsmasq"
+#}
 
 # initialize default webif theme
 # create symlink to /www/themes/xwrt (do NOT use INSTROOT in first arg).
@@ -144,87 +114,122 @@ ln -sf "/www/themes/xwrt" "${IPKG_INSTROOT}/www/themes/active" >&- 2>&-
 [ $? != 0 ] && {
 	# if fs doesn't support symlinks, do a copy
 	mkdir -p "${IPKG_INSTROOT}/www/themes/active"
-	cp -p "/www/themes/xwrt/*" "/www/themes/active/"
+	cp -r "${IPKG_INSTROOT}/www/themes/xwrt/" "${IPKG_INSTROOT}/www/themes/active/"
 }
 
 # initialize webifmetabin binaries
 # todo: move back to makefile because this won't be cleaned up good
-# for RC5, do an rm first
-rm -f "${IPKG_INSTROOT}/usr/bin/bstrip"
-rm -f "${IPKG_INSTROOT}/usr/bin/webif-page"
-rm -f "${IPKG_INSTROOT}/usr/bin/wepkeygen"
-rm -f "${IPKG_INSTROOT}/usr/bin/int2human"
-# -f is not needed, but we'll keep in case above is removed
 ln -sf /usr/bin/webifmetabin "${IPKG_INSTROOT}/usr/bin/bstrip"
 ln -sf /usr/bin/webifmetabin "${IPKG_INSTROOT}/usr/bin/webif-page"
 ln -sf /usr/bin/webifmetabin "${IPKG_INSTROOT}/usr/bin/wepkeygen"
 ln -sf /usr/bin/webifmetabin "${IPKG_INSTROOT}/usr/bin/int2human"
 
-# initialize ipkg.conf
-[ -z "$IPKG_INSTROOT" ] && firmware_version=$(nvram get firmware_version)
-if [ "$firmware_version" = "RC5" ] || grep -q "RC5" "${IPKG_INSTROOT}/etc/banner"; then
-	DeleteRepository "http://downloads.openwrt.org/backports/rc4" 1
-	AddRepository "rc5-backports" "http://downloads.openwrt.org/backports/rc5"
-elif [ "$firmware_version" = "RC6" ] || grep -q "RC6" "${IPKG_INSTROOT}/etc/banner"; then	
-	DeleteRepository "http://downloads.openwrt.org/backports/rc5" 1
-	AddRepository "rc6-backports" "http://downloads.openwrt.org/backports/rc6"	
-elif [ "$firmware_version" = "0.9" ] || grep -q "0.9" "${IPKG_INSTROOT}/etc/banner"; then	
-	# delete all previous backports, all lost packages are in our repository
-	DeleteRepository "http://downloads.openwrt.org/backports/rc4" 1
-	DeleteRepository "http://downloads.openwrt.org/backports/rc5" 1
-	DeleteRepository "http://downloads.openwrt.org/backports/rc6" 1
-	AddRepository "0.9-backports" "http://downloads.openwrt.org/backports/0.9"
-else
-	echo "White Russian version not detected. Not installing backports repository source."
+if [ -e ${IPKG_INSTROOT}/etc/openwrt_version ]; then
+	revision="`cat ${IPKG_INSTROOT}/etc/openwrt_version`"
 fi
-# add our repository and force it to be the last and the preferred one
-AddRepository "X-Wrt" "http://download2.berlios.de/pub/xwrt/packages" 1
+
+# don't run below on 'real' system
+if [ -n "${IPKG_INSTROOT}" ]; then
+	if [ "$revision" = "7.06" ]; then
+		AddRepository "X-Wrt" "http://downloads.x-wrt.org/xwrt/kamikaze/7.06/$S/packages"
+	else
+		AddRepository "X-Wrt" "http://downloads.x-wrt.org/xwrt/kamikaze/snapshots/$S/packages"
+	fi
+fi
 
 # only run below on 'real' system (not image builder)
-if [ -z "${IPKG_INSTROOT}" ]; then	
-	[ "$IPKG_UPDATE_NEEDED" = "1" ] && ipkg update
+if [ -z "${IPKG_INSTROOT}" ]; then
+	
+	# initialize ipkg.conf
+	uname -a |grep mips |grep 2.4 && cat /proc/cpuinfo |grep Broadcom
+	[ $? = 0 ] && {
+		#Delete incorrect kamikaze repo
+		DeleteRepository "http://downloads.x-wrt.org/xwrt/kamikaze/brcm-2.4/packages"
+		if [ "$revision" = "7.06" ]; then
+			AddRepository "X-Wrt" "http://downloads.x-wrt.org/xwrt/kamikaze/7.06/brcm-2.4/packages"
+		else
+			AddRepository "X-Wrt" "http://downloads.x-wrt.org/xwrt/kamikaze/snapshots/brcm-2.4/packages"
+		fi
+	}
+	uname -a |grep mips |grep "2.6.*" && cat /proc/cpuinfo |grep Broadcom
+	[ $? = 0 ] && {
+		cat /proc/cpuinfo | grep BCM47xx && SYSTYPE="47xx"
+		cat /proc/cpuinfo | grep BCM63xx && SYSTYPE="63xx"
+		#Delete incorrect repo
+		DeleteRepository "http://downloads.x-wrt.org/xwrt/kamikaze/brcm${SYSTYPE}-2.6/packages"
+		if [ -n $SYSTYPE ]; then
+			if [ "$revision" = "7.06" ]; then
+				AddRepository "X-Wrt" "http://downloads.x-wrt.org/xwrt/kamikaze/7.06/brcm${SYSTYPE}-2.6/packages"
+			else
+				AddRepository "X-Wrt" "http://downloads.x-wrt.org/xwrt/kamikaze/snapshots/brcm${SYSTYPE}-2.6/packages"
+			fi
+		fi
+		unset SYSTYPE
+	}
+	uname -a |grep "2.6" |grep "i\?86"
+	[ $? = 0 ] && {
+		#Delete incorrect repo
+		DeleteRepository "http://downloads.x-wrt.org/xwrt/kamikaze/x86-2.6/packages"
+		if [ "$revision" = "7.06" ]; then
+			AddRepository "X-Wrt" "http://downloads.x-wrt.org/xwrt/kamikaze/7.06/x86-2.6/packages"
+		else
+			AddRepository "X-Wrt" "http://downloads.x-wrt.org/xwrt/kamikaze/snapshots/x86-2.6/packages"
+		fi
+	}
+	uname -a |grep mips |grep 2.6 && cat /proc/cpuinfo |grep Atheros
+	[ $? = 0 ] && {
+		#Delete incorrect repo
+		DeleteRepository "http://downloads.x-wrt.org/xwrt/kamikaze/atheros-2.6/packages"
+		if [ "$revision" = "7.06" ]; then
+			AddRepository "X-Wrt" "http://downloads.x-wrt.org/xwrt/kamikaze/7.06/atheros-2.6/packages"
+		else
+			AddRepository "X-Wrt" "http://downloads.x-wrt.org/xwrt/kamikaze/snapshots/atheros-2.6/packages"
+		fi
+	}
+	cat /proc/cpuinfo |grep "IXP4\?\?"
+	[ $? = "0" ] && {
+		if [ "$revision" = "7.06" ]; then
+			AddRepository "X-Wrt" "http://downloads.x-wrt.org/xwrt/kamikaze/7.06/ixp4xx-2.6/packages"
+		else
+			AddRepository "X-Wrt" "http://downloads.x-wrt.org/xwrt/kamikaze/snapshots/ixp4xx-2.6/packages"
+		fi
+	}
 
+#commit our old webif settings if they exist
+if [ -e "/tmp/.uci/webif" ]; then
+. /etc/functions.sh
+. /lib/config/uci.sh
+	uci_commit "webif"
+fi
+
+	[ "$IPKG_UPDATE_NEEDED" = "1" ] && ipkg update
+	
 	# force re-initialization of extension package lists
 	/usr/lib/webif/webif-mklanglist.sh
 	/usr/lib/webif/webif-mkthemelist.sh
+
+	/etc/init.d/webif enable
+	/etc/init.d/custom-user-startup enable
 	
-	is_package_installed webif_hotspot
-	if [ "$?" = "0" ]; then
-		cat "${IPKG_INSTROOT}/www/cgi-bin/webif/.categories" |sed '/##WEBIF:category:Network/a\
-##WEBIF:category:Hotspot'>"${IPKG_INSTROOT}/www/cgi-bin/webif/.categories"
-	fi
+	#FIXME: Syslog needs to be double checked
+	#/etc/init.d/syslog enable
 	
-	is_package_installed webif_freeloader
-	if [ "$?" = "0" ]; then
-		cat "${IPKG_INSTROOT}/www/cgi-bin/webif/.categories" |sed '/##WEBIF:category:Network/a\
-##WEBIF:category:Freeloader'>"${IPKG_INSTROOT}/www/cgi-bin/webif/.categories"
-	fi
-	
-	# todo: merge these two files so two uci commits don't get done
-	ExecuteIfExists "/etc/init.d/S90webif_deviceid"
-	ExecuteIfExists "/etc/init.d/S90webif_firmwareid"
+	ExecuteIfExists "/etc/init.d/webif" start
+#	ExecuteIfExists "/etc/init.d/firmwareinfo"	# x-wrt images use to pre-empt firmware_* set
 
 	# test installation successfulness
 	TestInstall
+	if [ -e /etc/httpd.conf ]; then
+		httpd_1=$(cat /tmp/httpd.conf.old)
+		httpd_2=$(cat /etc/httpd.conf)
+		[ "$httpd_1" != "$httpd_2" ] && {
+			echo "Reinitializing httpd ..."		
+			killall -HUP httpd
+		}
+	#comment out reboot for now to test if it is still needed in kamikaze
+	#else
+		#require_reboot
+	fi
 
-	httpd_1=$(cat /tmp/httpd.conf.old)
-	httpd_2=$(cat /etc/httpd.conf)
-	rm -f /tmp/httpd.conf.old
-	[ "$httpd_1" != "$httpd_2" ] && {
-		echo "Reinitializing httpd ..."		
-		killall -HUP httpd
-	}
-	[ ! -f "$webif_installed_mark" ] && {
-		# webif^2 first install.. force reboot. Required, we've been through this.
-		rm -f "$webif_installed_mark"
-		echo "I'm sorry, but I must reboot your router. This is a ONE time thing and"
-		echo " future upgrades of the webif will NOT require a reboot."
-		echo "Please wait about one minute for your router to reboot ..."
-		reboot_file=$(mktemp /tmp/rebootme.XXXXXX)
-		echo "#!/bin/sh" > $reboot_file
-		echo "sleep 5 && reboot" >> "$reboot_file"
-		chmod +x "$reboot_file"
-		sh "$reboot_file" &	
-	}
 fi
 exit 0

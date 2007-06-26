@@ -43,8 +43,6 @@ $1 == "ip" {
 		}
 	}
 	if (valid == 0) verr = "@TR<<Invalid value>>"
-
-	# two stages ip/netmask validation
 }
 
 # two stages ip/netmask validation
@@ -55,16 +53,14 @@ ipmasks > 1 {
 
 function dec2binstr(dec, data)
 {
-	for (j = 7; j >= 0; j--) {
-		if (dec > 0) {
-			ptwo = 2^j
-			if (dec >= ptwo) {
-				data = data "1"
-				dec = dec - ptwo
-			} else data = data "0"
-		} else data = data "0"
-	}
-	return data
+	if (dec == 0) return  data "00000000"
+	mask = 1
+	tdata = ""
+	for (; dec != 0; dec = rshift(dec, 1))
+		tdata = (and(dec, mask) ? "1" : "0") tdata
+	while ((length(tdata) % 8) != 0)
+		tdata = "0" tdata
+	return data tdata
 }
 
 # dotted decimal netmask

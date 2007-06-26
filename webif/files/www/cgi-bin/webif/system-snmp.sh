@@ -4,7 +4,8 @@
 ###################################################################
 # SNMP daemon configuration page
 #
-# Waiting to port to kamikaze...
+# Kamikaze version
+# 29/04/2007 Liran Tal <liran@enginx.com>
 #
 # Description:
 #	Configures SNMP daemon.
@@ -22,6 +23,17 @@
 # Configuration files referenced:
 #	none
 #
+
+config_cb() {
+	config_get TYPE "$CONFIG_SECTION" TYPE
+	case "$TYPE" in
+		snmp)
+			snmp_cfg="$CONFIG_SECTION"
+		;;
+	esac
+}
+
+uci_load "snmp"
 
 header "System" "SNMP" "@TR<<SNMP Settings>>" '' "$SCRIPT_NAME"
 
@@ -53,10 +65,10 @@ equal "$?" "0" && {
 }
 
 if empty "$FORM_submit"; then
-	FORM_snmp_private_name=${snmp_private_name:-$(nvram get snmp_private_name)}
-	FORM_snmp_private_src=${snmp_private_src:-$(nvram get snmp_private_src)}
-	FORM_snmp_public_name=${snmp_public_name:-$(nvram get snmp_public_name)}
-	FORM_snmp_public_src=${snmp_public_src:-$(nvram get snmp_public_src)}
+	eval FORM_snmp_private_name="\$CONFIG_${snmp_cfg}_privatename"
+	eval FORM_snmp_private_src="\$CONFIG_${snmp_cfg}_privatesrc"
+	eval FORM_snmp_public_name="\$CONFIG_${snmp_cfg}_publicname"
+	eval FORM_snmp_public_src="\$CONFIG_${snmp_cfg}_publicsrc"
 else
 	SAVED=1
 	validate <<EOF
@@ -66,10 +78,14 @@ string|FORM_snmp_public_name|@TR<<SNMP Public Community Name>>||$FORM_snmp_publi
 string|FORM_snmp_public_src|@TR<<SNMP Public Source>>||$FORM_snmp_public_src
 EOF
 	equal "$?" 0 && {
-		save_setting snmp snmp_private_name $FORM_snmp_private_name
-		save_setting snmp snmp_private_src $FORM_snmp_private_src
-		save_setting snmp snmp_public_name $FORM_snmp_public_name
-		save_setting snmp snmp_public_src $FORM_snmp_public_src
+		empty "$snmp_cfg" && {
+			uci_add snmp snmp snmp
+			snmp_cfg="snmp"
+		}
+		uci_set snmp "$snmp_cfg" privatename "$FORM_snmp_private_name"
+		uci_set snmp "$snmp_cfg" privatesrc "$FORM_snmp_private_src"
+		uci_set snmp "$snmp_cfg" publicname "$FORM_snmp_public_name"
+		uci_set snmp "$snmp_cfg" publicsrc "$FORM_snmp_public_src"
 	}
 fi
 

@@ -1,16 +1,11 @@
 #!/usr/bin/webif-page -p /bin/sh
 . /usr/lib/webif/webif.sh
 
-header "System" "Upgrade" "@TR<<Firmware Upgrade>>"
+header "System" "Upgrade" "<img src=/images/upd.jpg align=absmiddle>&nbsp;@TR<<Firmware Upgrade>>"
 
 #####################################################################
 do_upgrade() {
-	! empty "$BOOT_WAIT" && {
-		echo "<br />@TR<<Turning boot_wait on>> ..."
-		nvram set boot_wait=on
-		nvram commit
-	}
-	echo "<br />@TR<<Upgrading firmware, please wait>> ... <br />"	
+	echo "<br />Upgrading firmware, please wait ... <br />"
 	# free some memory :)
 	ps | grep -vE 'Command|init|\[[kbmj]|httpd|haserl|bin/sh|awk|kill|ps|webif' | awk '{ print $1 }' | xargs kill -KILL
 	MEMFREE="$(awk 'BEGIN{ mem = 0 } ($1 == "MemFree:") || ($1 == "Cached:") {mem += int($2)} END{print mem}' /proc/meminfo)"
@@ -46,10 +41,6 @@ read_var() {
 #####################################################################
 NOINPUT=1
 
-display_form <<EOF
-start_form|
-EOF
-
 #####################################################################
 equal "$REQUEST_METHOD" "GET" && {
 	cat <<EOF
@@ -69,19 +60,13 @@ function printStatus() {
 	<table style="width: 90%; text-align: left;" border="0" cellpadding="2" cellspacing="2" align="center">
 	<tbody>
 		<tr>
-			<td>@TR<<Boot_Wait_Force|Turn 'boot wait' ON>>:
+			<td>@TR<<Options>>:</td>
 			<td>
-				<input type="checkbox" name="boot_wait" value="1" />
-			</td>
-		</tr>				
-		<tr>
-			<td>@TR<<Erase_JFFS2|Erase JFFS2 partition>>:
-			<td>
-				<input type="checkbox" name="erase_fs" value="1" />
+				<input type="checkbox" name="erase_fs" value="1" />@TR<<Erase_JFFS2|Erase JFFS2 partition>>
 			</td>
 		</tr>
 		<tr>
-			<td>@TR<<Firmware_image|Firmware image:>></td>
+			<td>@TR<<Firmware_image|Firmware image to upload:>></td>
 			<td>
 				<input type="file" name="firmware" />
 			</td>
@@ -117,8 +102,6 @@ EOF
 		read_var
 		empty "$NAME" && exit
 		case "$NAME" in
-			boot_wait)
-				BOOT_WAIT=1;;
 			erase_fs)
 				ERASE_FS=1
 				bstrip "$BOUNDARY" > /dev/null
@@ -130,16 +113,6 @@ cat <<EOF
 	</div>
 EOF
 }
-
-display_form <<EOF
-helpitem|Turn boot wait on
-helptext|HelpText Turn_boot_wait_on#This option will cause boot_wait to be set prior to flashing the firmware image. When boot_wait is set most units will wait a few seconds at boot-up to see if anyone sends them a new firmware image via TFTP. This is useful in case the firmware upgrade flash corrupts your router's firmware.
-helpitem|Erase JFFS2
-helptext|HelpText Erase_JFFS2#This option is only useful when flashing a third-party firmware. Always select it when doing so. When upgrading to a new OpenWrt image, the JFFS2 partition is always erased.
-helpitem|Firmware Image
-helptext|HelpText Firmware_Image#You can choose any compatible BIN or TRX image.
-end_form|
-EOF
 
 footer
 

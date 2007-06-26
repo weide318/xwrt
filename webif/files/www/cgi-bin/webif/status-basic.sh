@@ -5,7 +5,7 @@ header "Status" "System" "@TR<<Device Status>>"
 
 echo "<meta http-equiv=\"refresh\" content=\"20\" />"
 
-MEMINFO=$(free | grep "Mem:")
+MEMINFO=$(busybox free | grep "Mem:")
 nI="0"
 for CUR_VAR in $MEMINFO; do
 	case "$nI" in
@@ -20,7 +20,7 @@ USED_MEM=$(expr $TOTAL_MEM - $FREE_MEM)
 MEM_PERCENT_FREE=$(expr $FREE_MEM "*" 100 / $TOTAL_MEM)
 MEM_PERCENT_USED=$(expr 100 - $MEM_PERCENT_FREE)
 
-SWAPINFO=$(free | grep "Swap:")
+SWAPINFO=$(busybox free | grep "Swap:")
 nI="0"
 for CUR_VAR in $SWAPINFO; do
 	case "$nI" in

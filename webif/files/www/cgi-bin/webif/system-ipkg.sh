@@ -28,19 +28,17 @@
 #
 #
 
-# default X-Wrt repository
-xwrtrepourl="http://download2.berlios.de/pub/xwrt/packages"
-xwrtreponame="X-Wrt"
-
 header "System" "Packages" "<img src=\"/images/pkg.jpg\" alt />&nbsp;@TR<<system_ipkg_Packages#Packages>>" '' "$SCRIPT_NAME"
 
 cat <<EOF
 <script type="text/javascript">
 function confirmT(action,pkg) {
 if ( pkg == "uclibc" || pkg == "base-files" || pkg == "bridge" || pkg == "busybox" || pkg == "dnsmasq" || pkg == "dropbear" || pkg == "haserl" || pkg == "hotplug" || pkg == "iptables" || pkg == "kernel" || pkg == "mtd" || pkg == "wireless-tools" || pkg == "wlc") {
-alert ("             <<< WARNING >>> \n\nPackage \"" + pkg + "\" should not be removed!\n\n>>> Removing may brick your router. <<<\n\nSystem requires \"" + pkg + "\" package to run.\n\n") ;
+alert ("             <<< @TR<<big_warning|WARNING>> >>> \n\n@TR<<system_ipkg_Package|Package>> \"" + pkg + "\" @TR<<should not be removed>>!\n\n>>> @TR<<Removing may brick your router.>> <<<\n\n@TR<<System requires>> \"" + pkg + "\" @TR<<package to run.>>\n\n") ;
 }
-if (window.confirm("Please Confirm!\n\nDo you want to " + action + " \"" + pkg + "\" package?")){
+var actionStr = action=="install" ? "@TR<<system_ipkg_install|install>>" : 
+	(action=="remove" ? "@TR<<system_ipkg_remove|remove>>" : action);
+if (window.confirm("@TR<<Please Confirm>>!\n\n@TR<<Do you want to>> " + actionStr + " \"" + pkg + "\" @TR<<system_ipkg_package|package>>?")){
 window.location="ipkg.sh?action=" + action + "&amp;pkg=" + pkg
 } }
 </script>
@@ -68,20 +66,12 @@ EOF
 		repo_update_needed=1
 		# since firstboot doesn't make a copy of ipkg.conf, we must do it
 		# todo: need a mutex or lock here
-		local tmpfile=$(mktemp "/tmp/.webif-ipkg-XXXXXX")
-		cp -p "/etc/ipkg.conf" "$tmpfile" 2>/dev/null
-		# a bit tricky but we want the X-Wrt repository always to be there
-		# and the last and the preferred one (i mean it!)
-		local oldlist=$(grep "^src[[:space:]]$xwrtreponame[[:space:]]$xwrtrepourl" /etc/ipkg.conf | cut -d' ' -f2)
-		! empty "$oldlist" && ! equal "$oldlist" "$xwrtreponame" ] && {
-			rm -f "/usr/lib/ipkg/lists/$oldlist" 2>/dev/null
-		}
-		(echo "src $FORM_reponame $FORM_repourl"
-		grep "^src[[:space:]]" "/etc/ipkg.conf") | grep -vi "^src[[:space:]].*[[:space:]]$xwrtrepourl" > "$tmpfile"
-		echo "src $xwrtreponame $xwrtrepourl" >> "$tmpfile"
-		grep -v "^src[[:space:]]" "/etc/ipkg.conf" >> "$tmpfile"
-		rm -f "/etc/ipkg.conf"
-		mv -f "$tmpfile" "/etc/ipkg.conf"
+		tmpfile=$(mktemp "/tmp/.webif-ipkg-XXXXXX")
+		cp -p "/etc/ipkg.conf" "$tmpfile"
+		echo "src $FORM_reponame $FORM_repourl" > "$tmpfile"
+		cat "/etc/ipkg.conf" >>"$tmpfile"
+		rm "/etc/ipkg.conf"
+		mv "$tmpfile" "/etc/ipkg.conf"
 	else
 		echo "<h3 class=\"warning\">$ERROR</h3>"
 	fi
@@ -91,22 +81,9 @@ EOF
 	repo_update_needed=1
 	repo_src_line="src $FORM_remove_repo_name $FORM_remove_repo_url"
 	remove_lines_from_file "/etc/ipkg.conf" "$repo_src_line"
-	# do not enable the user to remove our repository and force it to be
-	# the last and the preferred one (i mean it!)
-	local tmpfile=$(mktemp "/tmp/.webif-ipkg-XXXXXX")
-	cp -p "/etc/ipkg.conf" "$tmpfile" 2>/dev/null
-	local oldlist=$(grep "^src[[:space:]]$xwrtreponame[[:space:]]$xwrtrepourl" /etc/ipkg.conf | cut -d' ' -f2)
-	! empty "$oldlist" && ! equal "$oldlist" "$xwrtreponame" ] && {
-		rm -f "/usr/lib/ipkg/lists/$oldlist" 2>/dev/null
-	}
-	grep "^src[[:space:]]" "/etc/ipkg.conf" | grep -vi "^src[[:space:]].*[[:space:]]$xwrtrepourl" > "$tmpfile"
-	echo "src $xwrtreponame $xwrtrepourl" >> "$tmpfile"
-	grep -v "^src[[:space:]]" "/etc/ipkg.conf" >> "$tmpfile"
-	rm -f "/etc/ipkg.conf"
-	mv -f "$tmpfile" "/etc/ipkg.conf"
 	# manually remove package lists since ipkg update won't..
 	# todo: odd issue where 'rm -f /usr/lib/ipkg/lists/* does not work - openwrt should investigate
-	rm -f "/usr/lib/ipkg/lists/$FORM_remove_repo_name" >&- 2>&-
+	rm "/usr/lib/ipkg/lists/$FORM_remove_repo_name" >&- 2>&-
 	echo "<br />Repository source was removed: $FORM_remove_repo_name<br />"
 }
 
@@ -186,7 +163,7 @@ fi
 	<table class="packages"><tr class="packages"><th width="150">@TR<<system_ipkg_th_action#Action>></th><th width="200">@TR<<system_ipkg_th_package#Package>></th><th width=150>@TR<<system_ipkg_th_version#Version>></th><th>@TR<<system_ipkg_th_desc#Description>></th></tr>
 <?
 ipkg list_installed | awk -F ' ' '
-$2 !~ /terminated/ {
+($2 !~ /terminated/) && ($1 !~ /Done./) {
 	link=$1
 	gsub(/\+/,"%2B",link)
 	gsub(/^ */,"",link)

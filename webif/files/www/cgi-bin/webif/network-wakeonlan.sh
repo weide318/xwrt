@@ -8,8 +8,7 @@ ETHERS_FILE=/etc/ethers
 header "Network" "WoL" "@TR<<Wake-On-LAN>>" ''
 # check to make sure busybox's etherwake isn't included
 ! exists "/bin/etherwake" && {
-	has_pkgs wol
-	FORM_wolapp=${FORM_wolapp:-"wol"}
+	has_pkgs ether-wake
 }
 ?>
 <br />
